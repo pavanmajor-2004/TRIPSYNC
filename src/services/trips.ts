@@ -48,6 +48,13 @@ export async function createTrip(
     joinedAt: createdAt,
   })
 
+  // A separate, narrowly-scoped lookup so a user who is not yet a trip
+  // member can resolve an invite code to a tripId without needing read
+  // access to the trips collection itself (see firestore.rules).
+  await setDoc(doc(db, 'inviteCodes', inviteCode), {
+    tripId: tripRef.id,
+  })
+
   return toTrip(tripRef.id, {
     ...newTrip,
     createdBy: userId,
@@ -66,34 +73,50 @@ export async function getTripsForUser(userId: string): Promise<Trip[]> {
     where('userId', '==', userId),
   )
 
-  const [createdSnapshot, memberSnapshot] = await Promise.all([
+  const [createdResult, memberResult] = await Promise.allSettled([
     getDocs(createdQuery),
     getDocs(memberQuery),
   ])
 
+  if (createdResult.status === 'rejected') {
+    throw createdResult.reason
+  }
+
   const tripsById = new Map<string, Trip>()
 
-  for (const docSnapshot of createdSnapshot.docs) {
+  for (const docSnapshot of createdResult.value.docs) {
     tripsById.set(
       docSnapshot.id,
       toTrip(docSnapshot.id, docSnapshot.data() as Omit<Trip, 'id'>),
     )
   }
 
-  const joinedTripDocs = await Promise.all(
-    memberSnapshot.docs
-      .map((memberDoc) => memberDoc.ref.parent.parent)
-      .filter((tripRef) => tripRef !== null && !tripsById.has(tripRef.id))
-      .map((tripRef) => getDoc(tripRef!)),
-  )
+  if (memberResult.status === 'fulfilled') {
+    const joinedTripDocs = await Promise.all(
+      memberResult.value.docs
+        .map((memberDoc) => memberDoc.ref.parent.parent)
+        .filter((tripRef) => tripRef !== null && !tripsById.has(tripRef.id))
+        .map((tripRef) => getDoc(tripRef!)),
+    )
 
-  for (const tripDoc of joinedTripDocs) {
-    if (tripDoc.exists()) {
-      tripsById.set(
-        tripDoc.id,
-        toTrip(tripDoc.id, tripDoc.data() as Omit<Trip, 'id'>),
-      )
+    for (const tripDoc of joinedTripDocs) {
+      if (tripDoc.exists()) {
+        tripsById.set(
+          tripDoc.id,
+          toTrip(tripDoc.id, tripDoc.data() as Omit<Trip, 'id'>),
+        )
+      }
     }
+  } else {
+    // The collection-group query on members.userId requires a Firestore
+    // index with COLLECTION_GROUP scope (see firestore.indexes.json). If
+    // that index hasn't been deployed yet, degrade gracefully: still show
+    // the user's own created trips instead of failing the whole list.
+    console.error(
+      'Could not load joined trips (members collection-group query failed; ' +
+        'a Firestore index may be missing — see firestore.indexes.json):',
+      memberResult.reason,
+    )
   }
 
   return Array.from(tripsById.values()).sort(
@@ -107,20 +130,15 @@ export async function joinTripByInviteCode(
 ): Promise<Trip> {
   const normalizedCode = inviteCode.trim().toUpperCase()
 
-  const tripsQuery = query(
-    collection(db, 'trips'),
-    where('inviteCode', '==', normalizedCode),
-  )
-  const snapshot = await getDocs(tripsQuery)
+  const inviteCodeSnapshot = await getDoc(doc(db, 'inviteCodes', normalizedCode))
 
-  if (snapshot.empty) {
+  if (!inviteCodeSnapshot.exists()) {
     throw new Error('Invalid invite code.')
   }
 
-  const tripDoc = snapshot.docs[0]
-  const trip = toTrip(tripDoc.id, tripDoc.data() as Omit<Trip, 'id'>)
+  const { tripId } = inviteCodeSnapshot.data() as { tripId: string }
 
-  const memberRef = doc(db, 'trips', trip.id, 'members', userId)
+  const memberRef = doc(db, 'trips', tripId, 'members', userId)
   const memberSnapshot = await getDoc(memberRef)
 
   if (memberSnapshot.exists()) {
@@ -133,5 +151,13 @@ export async function joinTripByInviteCode(
     joinedAt: Timestamp.now(),
   })
 
-  return trip
+  // Only readable once membership exists (see firestore.rules), so this
+  // must happen after the member document is created above.
+  const tripSnapshot = await getDoc(doc(db, 'trips', tripId))
+
+  if (!tripSnapshot.exists()) {
+    throw new Error('Invalid invite code.')
+  }
+
+  return toTrip(tripSnapshot.id, tripSnapshot.data() as Omit<Trip, 'id'>)
 }
