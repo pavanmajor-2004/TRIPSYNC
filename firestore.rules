@@ -50,6 +50,26 @@ service cloud.firestore {
         // no editing another member's document, no deletions.
         allow update, delete: if false;
       }
+
+      match /locations/{userId} {
+        // Only members of this specific trip (or its creator) may read
+        // location data — never unrelated trips, never unauthenticated.
+        allow read: if isSignedIn() &&
+          (isTripMember(tripId) || isTripCreator(tripId));
+
+        // A user may only write their own location, and only while they
+        // are a member of this trip. Deliberately no isTripCreator
+        // exception here: the trip creator/admin has no extra write power
+        // and can never write on another member's behalf.
+        allow create, update: if isSignedIn() &&
+          userId == request.auth.uid &&
+          isTripMember(tripId) &&
+          request.resource.data.userId == request.auth.uid;
+
+        allow delete: if isSignedIn() &&
+          userId == request.auth.uid &&
+          isTripMember(tripId);
+      }
     }
 
     // Narrow invite-code -> tripId lookup, kept separate from /trips so a

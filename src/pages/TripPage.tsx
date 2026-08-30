@@ -1,10 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import LiveLocationMap from '../components/LiveLocationMap'
+import { useAuth } from '../hooks/useAuth'
+import { useGeolocation, type GeolocationErrorType } from '../hooks/useGeolocation'
+import { useTripLocations } from '../hooks/useTripLocations'
+import { haversineDistanceMeters, shareLocation, stopSharing } from '../services/locations'
 import { getTripById, getTripMembers } from '../services/trips'
 import type { Trip, TripMember } from '../types/trip'
 
+const MIN_WRITE_INTERVAL_MS = 10_000
+const MIN_WRITE_DISTANCE_METERS = 20
+
+const GEO_ERROR_MESSAGES: Record<GeolocationErrorType, string> = {
+  unsupported: 'Your browser does not support location sharing.',
+  'permission-denied':
+    'Location permission was denied. Enable location access for this site in your browser settings, then try again.',
+  'position-unavailable':
+    'Your location is currently unavailable. Please try again.',
+  timeout: 'Getting your location took too long. Please try again.',
+  unknown: 'Could not get your location. Please try again.',
+}
+
+interface LastWritten {
+  latitude: number
+  longitude: number
+  time: number
+}
+
 function TripPage() {
   const { tripId } = useParams<{ tripId: string }>()
+  const { user } = useAuth()
 
   const [trip, setTrip] = useState<Trip | null>(null)
   const [members, setMembers] = useState<TripMember[]>([])
@@ -50,6 +75,77 @@ function TripPage() {
     }
   }, [tripId])
 
+  const {
+    position,
+    error: geoError,
+    isSupported,
+    start: startGeolocation,
+    stop: stopGeolocation,
+  } = useGeolocation()
+  const { locations, error: locationsError } = useTripLocations(tripId)
+
+  const [wantsToShare, setWantsToShare] = useState(false)
+  const [sharingConfirmed, setSharingConfirmed] = useState(false)
+  const [shareError, setShareError] = useState('')
+
+  const lastWrittenRef = useRef<LastWritten | null>(null)
+
+  useEffect(() => {
+    if (!wantsToShare || !position || !tripId || !user) {
+      return
+    }
+
+    const { latitude, longitude, accuracy } = position
+    const now = Date.now()
+    const lastWritten = lastWrittenRef.current
+
+    const shouldWrite =
+      !lastWritten ||
+      now - lastWritten.time >= MIN_WRITE_INTERVAL_MS ||
+      haversineDistanceMeters(lastWritten, { latitude, longitude }) >=
+        MIN_WRITE_DISTANCE_METERS
+
+    if (!shouldWrite) {
+      return
+    }
+
+    shareLocation(tripId, user.uid, latitude, longitude, accuracy)
+      .then(() => {
+        lastWrittenRef.current = { latitude, longitude, time: now }
+        setSharingConfirmed(true)
+        setShareError('')
+      })
+      .catch((err) => {
+        console.error('shareLocation failed:', err)
+        setShareError('Could not update your location. Please try again.')
+
+        // The first write never succeeded: don't claim we're sharing.
+        if (!lastWrittenRef.current) {
+          stopGeolocation()
+          setWantsToShare(false)
+        }
+      })
+  }, [wantsToShare, position, tripId, user, stopGeolocation])
+
+  function handleStartSharing() {
+    setShareError('')
+    setWantsToShare(true)
+    startGeolocation()
+  }
+
+  function handleStopSharing() {
+    stopGeolocation()
+    setWantsToShare(false)
+    setSharingConfirmed(false)
+    lastWrittenRef.current = null
+
+    if (tripId && user) {
+      stopSharing(tripId, user.uid).catch((err) => {
+        console.error('stopSharing failed:', err)
+      })
+    }
+  }
+
   if (loading) {
     return <p className="auth-loading">Loading trip...</p>
   }
@@ -59,8 +155,16 @@ function TripPage() {
   }
 
   if (error || !trip) {
-    return <p className="auth-loading auth-error">{error || 'Could not load this trip. Please try again.'}</p>
+    return (
+      <p className="auth-loading auth-error">
+        {error || 'Could not load this trip. Please try again.'}
+      </p>
+    )
   }
+
+  // Once an error arrives before a first successful write, drop back to
+  // the "Share My Location" state instead of staying stuck on "Locating…".
+  const isLocating = wantsToShare && !sharingConfirmed && !geoError
 
   return (
     <section className="page-placeholder">
@@ -88,6 +192,33 @@ function TripPage() {
             </span>
           </div>
         ))}
+      </div>
+
+      <h2>Live Location</h2>
+
+      <div className="live-location-section">
+        <button
+          type="button"
+          className="live-location-toggle"
+          disabled={!isSupported || isLocating}
+          onClick={sharingConfirmed ? handleStopSharing : handleStartSharing}
+        >
+          {sharingConfirmed
+            ? 'Stop Sharing'
+            : isLocating
+              ? 'Locating…'
+              : 'Share My Location'}
+        </button>
+
+        <p className="location-status">
+          Status: {sharingConfirmed ? 'Sharing my location' : 'Not sharing'}
+        </p>
+
+        {geoError && <p className="auth-error">{GEO_ERROR_MESSAGES[geoError]}</p>}
+        {shareError && <p className="auth-error">{shareError}</p>}
+        {locationsError && <p className="auth-error">{locationsError}</p>}
+
+        <LiveLocationMap locations={locations} />
       </div>
     </section>
   )
