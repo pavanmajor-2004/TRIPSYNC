@@ -7,6 +7,7 @@ import ProfilePage from '../pages/ProfilePage'
 import SignupPage from '../pages/SignupPage'
 import TripPage from '../pages/TripPage'
 import TripsPage from '../pages/TripsPage'
+import ProtectedRoute from './ProtectedRoute'
 
 function AppRoutes() {
   return (
@@ -15,11 +16,13 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
 
-      <Route element={<AppLayout />}>
-        <Route path="/home" element={<HomePage />} />
-        <Route path="/trips" element={<TripsPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/trip/:tripId" element={<TripPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/trips" element={<TripsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/trip/:tripId" element={<TripPage />} />
+        </Route>
       </Route>
     </Routes>
   )
