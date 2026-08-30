@@ -35,8 +35,23 @@ service cloud.firestore {
         // Any member of the trip (or its creator) can read the full member
         // list; this also covers listing the members collection, since the
         // rule is evaluated per-document against the same condition.
+        //
+        // The extra `resource.data.userId == request.auth.uid` clause is
+        // required for getTripsForUser()'s collectionGroup(db, 'members')
+        // query, which filters on the `userId` FIELD, not the document ID.
+        // Firestore can only authorize a collection-group query when the
+        // rule has a resource.data condition that structurally matches the
+        // query's where() filter — `memberId == request.auth.uid` (a
+        // document-ID check) doesn't satisfy that, even though memberId and
+        // userId are always equal by construction, so without this clause
+        // the query is rejected outright. It's safe: userId is always set
+        // to the document's own owner (enforced by the create rule below),
+        // so this can never match another user's membership document.
         allow read: if isSignedIn() &&
-          (memberId == request.auth.uid || isTripCreator(tripId) || isTripMember(tripId));
+          (memberId == request.auth.uid ||
+           resource.data.userId == request.auth.uid ||
+           isTripCreator(tripId) ||
+           isTripMember(tripId));
 
         allow create: if isSignedIn() &&
           memberId == request.auth.uid &&
@@ -70,6 +85,25 @@ service cloud.firestore {
           userId == request.auth.uid &&
           isTripMember(tripId);
       }
+    }
+
+    // Collection-group authorization for getTripsForUser()'s
+    // collectionGroup(db, 'members').where('userId', '==', uid) query.
+    //
+    // The nested `trips/{tripId}/members/{memberId}` rule above — even with
+    // its `resource.data.userId == request.auth.uid` clause — only ever
+    // authorizes requests reached through that fixed nested path pattern
+    // (a specific trip's own member subcollection). A `collectionGroup()`
+    // request spans the `members` collection ID across every trip at once,
+    // and Firestore only authorizes that kind of request against a rule
+    // declared with the recursive wildcard `{path=**}`, which is what this
+    // block supplies. It is scoped to strict self-access only: it can never
+    // expose another user's membership document, in any trip, because the
+    // `userId` field is always set to a document's own owner (enforced by
+    // the create rule above), so this condition can only ever match the
+    // requester's own rows.
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Narrow invite-code -> tripId lookup, kept separate from /trips so a
