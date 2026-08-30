@@ -27,7 +27,16 @@ export function useTripLocations(
         setLoading(false)
       },
       (err) => {
-        console.error('subscribeToTripLocations failed:', err)
+        // TEMPORARY diagnostic logging — remove once the read-path bug is
+        // confirmed and fixed. Logs the raw Firestore error code/message
+        // (e.g. 'permission-denied', 'failed-precondition') so it isn't
+        // hidden behind the generic user-facing message below.
+        const firestoreErr = err as { code?: string; message?: string }
+        console.error('[DIAGNOSTIC] subscribeToTripLocations failed:', {
+          code: firestoreErr?.code,
+          message: firestoreErr?.message,
+          fullError: err,
+        })
         setError('Could not load live locations.')
         setLoading(false)
       },

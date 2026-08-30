@@ -41,6 +41,12 @@ interface LiveLocationMapProps {
 }
 
 function isFresh(location: TripLocation): boolean {
+  // updatedAt is null until the server resolves the serverTimestamp() sentinel
+  // (e.g. right after a write, before the server acknowledges it). Never
+  // treat an unresolved timestamp as fresh/live.
+  if (!location.updatedAt) {
+    return false
+  }
   return Date.now() - location.updatedAt.toMillis() <= STALE_THRESHOLD_MS
 }
 
@@ -77,7 +83,10 @@ function LiveLocationMap({ locations }: LiveLocationMapProps) {
               <br />
               {isFresh(location) ? 'Live' : 'Stale (last known location)'}
               <br />
-              Last updated: {location.updatedAt.toDate().toLocaleTimeString()}
+              Last updated:{' '}
+              {location.updatedAt
+                ? location.updatedAt.toDate().toLocaleTimeString()
+                : 'Updating…'}
             </Popup>
           </Marker>
         ))}

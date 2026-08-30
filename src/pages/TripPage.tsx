@@ -109,6 +109,17 @@ function TripPage() {
       return
     }
 
+    // TEMPORARY diagnostic logging — confirms the browser successfully
+    // obtained a position (this log firing at all rules out a geolocation
+    // failure) before the write is even attempted.
+    console.error('[DIAGNOSTIC] geolocation position obtained, attempting write:', {
+      latitude,
+      longitude,
+      accuracy,
+      tripId,
+      userId: user.uid,
+    })
+
     shareLocation(tripId, user.uid, latitude, longitude, accuracy)
       .then(() => {
         lastWrittenRef.current = { latitude, longitude, time: now }
@@ -116,7 +127,16 @@ function TripPage() {
         setShareError('')
       })
       .catch((err) => {
-        console.error('shareLocation failed:', err)
+        // TEMPORARY diagnostic logging — remove once the write-path bug is
+        // confirmed and fixed. Logs the raw Firestore error code/message
+        // (e.g. 'permission-denied', 'failed-precondition') so it isn't
+        // hidden behind the generic user-facing message below.
+        const firestoreErr = err as { code?: string; message?: string }
+        console.error('[DIAGNOSTIC] shareLocation failed:', {
+          code: firestoreErr?.code,
+          message: firestoreErr?.message,
+          fullError: err,
+        })
         setShareError('Could not update your location. Please try again.')
 
         // The first write never succeeded: don't claim we're sharing.
@@ -126,6 +146,15 @@ function TripPage() {
         }
       })
   }, [wantsToShare, position, tripId, user, stopGeolocation])
+
+  // TEMPORARY diagnostic logging — separately surfaces browser geolocation
+  // errors (permission denied, unavailable, timeout, unsupported) so they
+  // can't be confused with a Firestore read/write failure.
+  useEffect(() => {
+    if (geoError) {
+      console.error('[DIAGNOSTIC] browser geolocation error:', geoError)
+    }
+  }, [geoError])
 
   function handleStartSharing() {
     setShareError('')
