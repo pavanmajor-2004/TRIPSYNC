@@ -17,6 +17,7 @@ export type NewTrip = Pick<
 >
 
 export interface TripMember {
+  userId: string
   role: 'admin' | 'member'
   joinedAt: Timestamp
 }

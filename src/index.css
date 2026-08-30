@@ -147,6 +147,11 @@ button:disabled {
   font-weight: 500;
 }
 
+.auth-success {
+  color: #16a34a;
+  font-weight: 500;
+}
+
 .auth-loading {
   text-align: center;
   padding: 48px 24px;
