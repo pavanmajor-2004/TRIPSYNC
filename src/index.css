@@ -151,3 +151,19 @@ button:disabled {
   text-align: center;
   padding: 48px 24px;
 }
+
+.trip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 480px;
+  margin: 24px auto 0;
+  text-align: left;
+}
+
+.trip-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-subtle);
+}
