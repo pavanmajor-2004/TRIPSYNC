@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { createTrip, getTripsForUser, joinTripByInviteCode } from '../services/trips'
 import type { Trip } from '../types/trip'
@@ -245,14 +246,14 @@ function TripsPage() {
         {!loadingTrips &&
           !loadError &&
           trips.map((trip) => (
-            <div key={trip.id} className="trip-card">
+            <Link key={trip.id} to={`/trip/${trip.id}`} className="trip-card">
               <h3>{trip.name}</h3>
               {trip.description && <p>{trip.description}</p>}
               <p>
                 {trip.startDate} – {trip.endDate}
               </p>
               <p>Invite code: {trip.inviteCode}</p>
-            </div>
+            </Link>
           ))}
       </div>
     </section>

@@ -11,7 +11,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from './firestore'
-import type { NewTrip, Trip } from '../types/trip'
+import type { NewTrip, Trip, TripMember } from '../types/trip'
 
 const INVITE_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const INVITE_CODE_LENGTH = 6
@@ -160,4 +160,24 @@ export async function joinTripByInviteCode(
   }
 
   return toTrip(tripSnapshot.id, tripSnapshot.data() as Omit<Trip, 'id'>)
+}
+
+export async function getTripById(tripId: string): Promise<Trip | null> {
+  const tripSnapshot = await getDoc(doc(db, 'trips', tripId))
+
+  if (!tripSnapshot.exists()) {
+    return null
+  }
+
+  return toTrip(tripSnapshot.id, tripSnapshot.data() as Omit<Trip, 'id'>)
+}
+
+export async function getTripMembers(tripId: string): Promise<TripMember[]> {
+  const membersSnapshot = await getDocs(collection(db, 'trips', tripId, 'members'))
+
+  const members = membersSnapshot.docs.map(
+    (docSnapshot) => docSnapshot.data() as TripMember,
+  )
+
+  return members.sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis())
 }

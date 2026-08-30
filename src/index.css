@@ -167,8 +167,64 @@ button:disabled {
 }
 
 .trip-card {
+  display: block;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
   background: var(--bg-subtle);
+  color: inherit;
+  text-decoration: none;
+}
+
+.trip-card:hover {
+  border-color: var(--accent);
+}
+
+.trip-detail-card {
+  max-width: 480px;
+  margin: 24px auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-subtle);
+  text-align: left;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+  margin: 16px auto 0;
+  text-align: left;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  background: var(--bg-subtle);
+}
+
+.member-id {
+  flex: 1;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.member-role {
+  text-transform: capitalize;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.member-joined {
+  color: var(--text);
+  font-size: 0.85em;
 }

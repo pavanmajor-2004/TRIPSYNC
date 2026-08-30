@@ -32,8 +32,11 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid;
 
       match /members/{memberId} {
+        // Any member of the trip (or its creator) can read the full member
+        // list; this also covers listing the members collection, since the
+        // rule is evaluated per-document against the same condition.
         allow read: if isSignedIn() &&
-          (memberId == request.auth.uid || isTripCreator(tripId));
+          (memberId == request.auth.uid || isTripCreator(tripId) || isTripMember(tripId));
 
         allow create: if isSignedIn() &&
           memberId == request.auth.uid &&
