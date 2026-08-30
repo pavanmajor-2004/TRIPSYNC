@@ -48,5 +48,26 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    // Narrow invite-code -> tripId lookup, kept separate from /trips so a
+    // user who is not yet a trip member can resolve a code without needing
+    // read access to trip documents themselves (which stay restricted to
+    // members/creator by the rules above).
+    match /inviteCodes/{inviteCode} {
+      // Any signed-in user may look up a single, known invite code by ID.
+      // This only ever reveals a tripId, never trip content.
+      allow get: if isSignedIn();
+
+      // Never allow enumerating all invite codes.
+      allow list: if false;
+
+      // Only the creator of the referenced trip may register its code,
+      // and only once (immutable afterwards).
+      allow create: if isSignedIn() &&
+        request.resource.data.tripId is string &&
+        get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.createdBy == request.auth.uid;
+
+      allow update, delete: if false;
+    }
   }
 }
