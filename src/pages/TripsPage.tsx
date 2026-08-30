@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { createTrip, getTripsForUser } from '../services/trips'
+import { createTrip, getTripsForUser, joinTripByInviteCode } from '../services/trips'
 import type { Trip } from '../types/trip'
+
+const KNOWN_JOIN_ERRORS = new Set([
+  'Invalid invite code.',
+  'You are already a member of this trip.',
+])
 
 function TripsPage() {
   const { user } = useAuth()
@@ -17,6 +22,11 @@ function TripsPage() {
   const [endDate, setEndDate] = useState('')
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const [joinCode, setJoinCode] = useState('')
+  const [joinError, setJoinError] = useState('')
+  const [joinSuccess, setJoinSuccess] = useState('')
+  const [joining, setJoining] = useState(false)
 
   useEffect(() => {
     if (!user) {
@@ -107,6 +117,47 @@ function TripsPage() {
     }
   }
 
+  async function handleJoinTrip(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    setJoinSuccess('')
+
+    if (!user) {
+      setJoinError('You must be signed in to join a trip.')
+      return
+    }
+
+    const normalizedCode = joinCode.trim().toUpperCase()
+
+    if (!normalizedCode) {
+      setJoinError('Enter an invite code.')
+      return
+    }
+
+    setJoinError('')
+    setJoining(true)
+
+    try {
+      const trip = await joinTripByInviteCode(normalizedCode, user.uid)
+
+      setTrips((current) =>
+        current.some((existing) => existing.id === trip.id)
+          ? current
+          : [trip, ...current],
+      )
+      setJoinSuccess(`You joined "${trip.name}".`)
+      setJoinCode('')
+    } catch (err) {
+      if (err instanceof Error && KNOWN_JOIN_ERRORS.has(err.message)) {
+        setJoinError(err.message)
+      } else {
+        setJoinError('Could not join the trip. Please try again.')
+      }
+    } finally {
+      setJoining(false)
+    }
+  }
+
   return (
     <section className="page-placeholder">
       <h1>Trips Page</h1>
@@ -164,6 +215,26 @@ function TripsPage() {
           </button>
         </form>
       )}
+
+      <form className="auth-form" onSubmit={handleJoinTrip}>
+        <label className="auth-field">
+          Invite code
+          <input
+            type="text"
+            value={joinCode}
+            onChange={(event) => setJoinCode(event.target.value)}
+            placeholder="e.g. BBCGQY"
+            maxLength={6}
+          />
+        </label>
+
+        {joinError && <p className="auth-error">{joinError}</p>}
+        {joinSuccess && <p className="auth-success">{joinSuccess}</p>}
+
+        <button type="submit" disabled={joining}>
+          {joining ? 'Joining…' : 'Join Trip'}
+        </button>
+      </form>
 
       <div className="trip-list">
         {loadingTrips && <p>Loading your trips…</p>}

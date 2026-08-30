@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isTripMember(tripId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/trips/$(tripId)/members/$(request.auth.uid));
+    }
+
+    function isTripCreator(tripId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/trips/$(tripId)).data.createdBy == request.auth.uid;
+    }
+
+    match /trips/{tripId} {
+      allow read: if isSignedIn() &&
+        (resource.data.createdBy == request.auth.uid || isTripMember(tripId));
+
+      allow create: if isSignedIn() &&
+        request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+        resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdBy == resource.data.createdBy;
+
+      allow delete: if isSignedIn() &&
+        resource.data.createdBy == request.auth.uid;
+
+      match /members/{memberId} {
+        allow read: if isSignedIn() &&
+          (memberId == request.auth.uid || isTripCreator(tripId));
+
+        allow create: if isSignedIn() &&
+          memberId == request.auth.uid &&
+          request.resource.data.userId == request.auth.uid &&
+          (
+            request.resource.data.role == 'member' ||
+            (request.resource.data.role == 'admin' && isTripCreator(tripId))
+          );
+
+        // Membership is immutable once created: no role changes,
+        // no editing another member's document, no deletions.
+        allow update, delete: if false;
+      }
+    }
+  }
+}
